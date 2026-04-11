@@ -75,7 +75,7 @@ class TransformerApp(tk.Tk):
         self.date_sequence_var = tk.StringVar(value=DROPDOWN_PLACEHOLDER)
 
         try:
-            self.iconbitmap(resource_path("app.icns"))
+            self.iconbitmap(resource_path("app.ico"))
         except Exception:
             pass
 

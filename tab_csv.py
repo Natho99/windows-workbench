@@ -1,4 +1,3 @@
-# tab_csv.py
 """
 Instruction panel renderer.
 Optimized to minimize vertical height for all modes, specifically JSON Generator.
@@ -39,41 +38,38 @@ def render_instructions(
     # ══════════════════════════════════════════════════════════════════════════
     if mode == "JSON Generator":
 
-        # ── Column 1: JSON Tool Info ──────────────────────────────────────────
+        # ── Column 1: Tool Capabilities ──────────────────────────────────────
         tk.Label(left_frame, text="JSON GENERATOR", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(left_frame, text=(
             "• Supports: Beyonic, Airtel, Bank, Flexipay.\n"
             "• Prevents manual JSON syntax errors.\n"
-            " AI Hallucination Protection measures:\n" 
-            "• Auto-Enforces constant fields (e.g., 'FOURTH').\n"
-            "• Auto-Corrects Transaction ID prefixes (e.g., 'S' for bank or '300' for flexi)."
+            "• Auto-formats IDs (e.g., Bank 'S' prefix).\n"
+            "🔒 Privacy: Masks customer numbers & Txn IDs before hitting AI (Groq)."
         ), font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w").pack(fill="x")
 
-        # ── Column 2: Quick Steps ─────────────────────────────────────────────
+        # ── Column 2: Workflow ─────────────────────────────────────────────
         tk.Label(right_frame, text="QUICK STEPS", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(right_frame, text=(
-            "1. Select type & paste source text.\n"
-            "2. Click 🤖 Autofill with AI or fill the form manually.\n"
-            "3. Verify all fields vs original docs.\n"
+            "1. Paste raw text into Reference Panel.\n"
+            "2. Click 🤖 Autofill with AI (Groq).\n"
             "4. ⚙️ Generate ➔ 📋 Copy ➔ Paste to Shujaa."
         ), font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w").pack(fill="x")
 
-        # ── Column 3: Reference Panel ─────────────────────────────────────────
+        # ── Column 3: Persistence & AI ──────────────────────────────────────
         if ref_frame is not None:
-            tk.Label(ref_frame, text="REFERENCE HOLDER PANEL", font=FONT_TITLE, 
+            tk.Label(ref_frame, text="SETTINGS & DB", font=FONT_TITLE, 
                      bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
             tk.Label(ref_frame, text=(
-                "• Keeps source text visible while typing.\n"
-                "• Paste data from Ticket, SMS or Statement.\n"
-                "• Configure API Key in ⚙ Settings.\n"
-                "• Verify AI data as accuracy may not be 100%."
+                "• ⚙ Settings: Update API keys & Txn Samples.\n"
+                "• DB Persistence: Notes & Keys are never lost.\n"
+                "• Sample IDs: Customize examples in settings."
             ), font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w").pack(fill="x")
 
-        # Warning Bar (Condensed)
+        # Warning Bar for JSON Mode
         ttk.Separator(left_frame, orient="horizontal").pack(fill="x", pady=(4, 2))
-        tk.Label(left_frame, text="Important: This mode does not support Bulk operations,just one recon at a time.",
+        tk.Label(left_frame, text="Note: Always cross-check AI output with original data in Reference Holder.",
                  font=FONT_BOLD, bg=THEME_BG, fg=TEXT_ERROR).pack(anchor="w")
         return
 
@@ -81,48 +77,47 @@ def render_instructions(
     # CSV MODES — Beyonic / FlexiPay (Condensed)
     # ══════════════════════════════════════════════════════════════════════════
 
-    # Standard Horizontal Warning at the bottom
-    ttk.Separator(left_frame, orient="horizontal").pack(side="bottom", fill="x", pady=(5, 0))
-    tk.Label(left_frame, text="IMPORTANT: Always verify transformed CSV data against original statement.",
-             font=FONT_BOLD, bg=THEME_BG, fg=TEXT_ERROR).pack(side="bottom", fill="x")
+    # Standard Bottom Warning for CSV modes
+    bottom_warn = tk.Frame(left_frame, bg=THEME_BG)
+    bottom_warn.pack(side="bottom", fill="x")
+    ttk.Separator(bottom_warn, orient="horizontal").pack(fill="x", pady=(5, 2))
+    tk.Label(bottom_warn, text="IMPORTANT: Verify transformed CSV data against original statement.",
+             font=FONT_BOLD, bg=THEME_BG, fg=TEXT_ERROR).pack(fill="x")
 
     if mode == "FlexiPay":
-        tk.Label(left_frame, text="FLEXIPAY USER ACTIONS", font=FONT_TITLE, 
+        tk.Label(left_frame, text="USER ACTIONS", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(left_frame, font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w",
             text=(
-                "• Remove 'Flexipay' top label and footers.\n"
-                "• Remove non-column header rows.\n"
-                "• Check for exponential formats in numbers to avoid exponential mess.\n"
-                "• Save the prepared file as csv then upload."
+                "• Clean File: Remove top labels and footers.\n"
+                "• Clean Header: Keep only the column names row.\n"
+                "• File Format: Save as .CSV before upload."
             )).pack(fill="x")
 
         tk.Label(right_frame, text="SYSTEM LOGIC", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(right_frame, font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w",
             text=(
-                "• Filters 'successful', 'Airtel Cashin' & 'MERCHANT PURCHASE' rows.\n"
-                "• Maps data to 10 standard columns.\n"
-                "• Initiation Date ➔ DD-MM-YYYY HH:MM:SS.\n"
-                "•Saves the Transformed csv with timestamped name to FLEXIPAY_TRANSFORMED folder in desktop."
+                "• Filters for 'successful' cashins/merchants.\n"
+                "• Standardizes dates (DD-MM-YYYY HH:MM:SS).\n"
+                "• Export: Saved to Desktop/FLEXIPAY_TRANSFORMED."
             )).pack(fill="x")
 
     elif mode == "Beyonic":
-        tk.Label(left_frame, text="BEYONIC USER ACTIONS", font=FONT_TITLE, 
+        tk.Label(left_frame, text="USER ACTIONS", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(left_frame, font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w",
             text=(
-                "• Upload downloaded CSV directly.\n"
-                "• No manual editing of columns needed.\n"
-                "• Ensure no exponential values in the csv."
+                "• Direct Upload: Use the raw CSV download.\n"
+                "• No editing required before processing.\n"
+                "• Verify no exponential values are present."
             )).pack(fill="x")
 
         tk.Label(right_frame, text="SYSTEM LOGIC", font=FONT_TITLE, 
                  bg=THEME_BG, fg=TEXT_COLOR, anchor="w").pack(fill="x")
         tk.Label(right_frame, font=FONT_BODY, bg=THEME_BG, fg=TEXT_COLOR, justify="left", anchor="w",
             text=(
-                "• Maps data to 7 standard columns.\n"
-                "• Fixes missing Txn IDs via 'Id' column.\n"
-                "• Payment Date ➔ DD-MM-YYYY HH:MM:SS.\n"
-                "•Saves the Transformed csv with timestamped name to BEYONIC_TRANSFORMED folder in desktop."
+                "• Maps 7 columns and handles 'Id' vs 'TxnId'.\n"
+                "• Standardizes dates (DD-MM-YYYY HH:MM:SS).\n"
+                "• Export: Saved to Desktop/BEYONIC_TRANSFORMED."
             )).pack(fill="x")

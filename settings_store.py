@@ -15,69 +15,71 @@ DEFAULTS: dict = {
     "parse_mode": "ai",
     "api_key": "",
     "groq_model": "llama-3.1-8b-instant",
+    "show_groq_monitor": "0",           # "1" = visible, "0" = hidden (default: hidden)
+
+    # Confluence Configuration — commented out; uncomment to re-enable
+    # "conf_username":  "",
+    # "conf_api_token": "",
+    # "conf_base_url":  "https://4gcapital-company.atlassian.net/wiki/spaces/TS/pages/",
+
+    # Transaction ID Samples
+    "BeyonicTxnId":  "T91592568",
+    "NetworkTxnId":  "141693582907",
+    "AirtelTxnId":   "143363767927",
+    "BankTxnId":     "S34111201",
+    "FlexipayTxnId": "772774570001",
 }
 
-# ── Internal state (prevents re-creating table repeatedly) ───────────────
 _db_initialized = False
+
 
 def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def _init_db():
-    """Initialize DB only once per app lifecycle."""
     global _db_initialized
     if _db_initialized:
         return
-
     with _get_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL DEFAULT ''
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings "
+            "(key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')"
+        )
+        for k, v in DEFAULTS.items():
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v)
             )
-        """)
         conn.commit()
-
     _db_initialized = True
 
-# ── Public API ───────────────────────────────────────────────────────────
 
 def load_settings() -> dict:
-    """Load settings without overwriting saved values."""
     _init_db()
-
     cfg = dict(DEFAULTS)
-
     try:
         with _get_conn() as conn:
             rows = conn.execute("SELECT key, value FROM settings").fetchall()
-
         for row in rows:
             cfg[row["key"]] = row["value"]
-
     except Exception:
         pass
-
     return cfg
 
 
 def save_settings(cfg: dict) -> None:
-    """Save only provided values."""
     _init_db()
-
     try:
         with _get_conn() as conn:
             conn.executemany(
                 """
-                INSERT INTO settings (key, value)
-                VALUES (?, ?)
+                INSERT INTO settings (key, value) VALUES (?, ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value
                 """,
-                [(str(k), str(v)) for k, v in cfg.items()]
+                [(str(k), str(v)) for k, v in cfg.items()],
             )
             conn.commit()
-
     except Exception as exc:
         raise IOError(f"Could not save settings: {exc}") from exc

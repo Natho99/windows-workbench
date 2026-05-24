@@ -1,228 +1,245 @@
-# settings_page.py
-"""
-Settings panel — rendered INSIDE the main window as a full-screen overlay
-frame that slides over the notebook area.  No separate window is opened.
-
-Settings are persisted to SQLite:
-    %APPDATA%\\4GCapital\\journal.db  →  table: settings
-
-Sections
---------
-  1. Groq AI — API key, model selector
-"""
-
 import tkinter as tk
 from tkinter import ttk, messagebox
-
 from config import (
     THEME_BG, THEME_ACCENT, THEME_INPUT, THEME_BORDER,
     TEXT_COLOR, FONT_BODY, FONT_BOLD, FONT_HEADER, FONT_SMALL,
 )
-from settings_store import load_settings, save_settings, DB_PATH
+from settings_store import load_settings, save_settings
 
 # ── Colours ───────────────────────────────────────────────────────────────
 CARD_BG     = "#fdf6e3"
 CARD_BORDER = "#c9a66b"
 HDR_BG      = "#c9a66b"
 HDR_FG      = "#3a2f24"
-INFO_BG     = "#fff8e7"
-INFO_BORDER = "#d4b483"
+LINK_COLOR  = "#0066cc"
+SCOPE_COLOR = "#d32f2f"
 
-GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama-3.3-70b-versatile",
-    "llama3-8b-8192",
-    "llama3-70b-8192",
-    "gemma2-9b-it",
-    "mixtral-8x7b-32768",
-]
+GROQ_MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "gemma2-9b-it"]
 
 
 class SettingsPanel(tk.Frame):
-    """
-    Full-size settings panel packed inside the main window.
-    Call .show() to bring it forward.
-    """
-
     def __init__(self, parent: tk.Misc, **kwargs):
         super().__init__(parent, bg=THEME_BG, **kwargs)
-        self._cfg          = load_settings()
-        self._api_key_var  = tk.StringVar(value=self._cfg.get("api_key", ""))
-        self._model_var    = tk.StringVar(
-            value=self._cfg.get("groq_model", "llama-3.1-8b-instant")
-        )
-        self._key_visible  = False
+        self._cfg = load_settings()
+
+        # Variables
+        self._api_key_var    = tk.StringVar(value=self._cfg.get("api_key", ""))
+        self._model_var      = tk.StringVar(value=self._cfg.get("groq_model", "llama-3.1-8b-instant"))
+        self._monitor_var    = tk.BooleanVar(value=self._cfg.get("show_groq_monitor", "1") == "1")
+
+        # Confluence variables — commented out; uncomment to re-enable
+        # self._conf_user_var  = tk.StringVar(value=self._cfg.get("conf_username", ""))
+        # self._conf_token_var = tk.StringVar(value=self._cfg.get("conf_api_token", ""))
+        # self._conf_url_var   = tk.StringVar(value=self._cfg.get("conf_base_url", ""))
+
+        self._txn_vars = {k: tk.StringVar(value=self._cfg.get(k, "")) for k in
+                          ["BeyonicTxnId", "NetworkTxnId", "AirtelTxnId", "BankTxnId", "FlexipayTxnId"]}
+
+        self._key_vis = False
+        # self._tok_vis = False   # Confluence token visibility — commented out
+
         self._build()
 
-    # ── Public interface ──────────────────────────────────────────────────
+    def _copy_link(self, url):
+        self.clipboard_clear()
+        self.clipboard_append(url)
+        messagebox.showinfo("Copied", f"Link copied to clipboard:\n{url}")
 
     def show(self):
-        """Refresh values from the DB whenever the panel is displayed."""
-        self._cfg = load_settings()
-        self._api_key_var.set(self._cfg.get("api_key", ""))
-        self._model_var.set(
-            self._cfg.get("groq_model", "llama-3.1-8b-instant")
-        )
+        """
+        Required by main.py _toggle_settings.
+        Brings the frame to the top and ensures it is visible.
+        """
+        self.lift()
+        self.update_idletasks()
 
     def hide(self):
-        """Ask the parent app to close the settings panel."""
         w = self.master
-        while w is not None:
+        while w:
             if hasattr(w, "_toggle_settings"):
                 w._toggle_settings()
                 return
             w = getattr(w, "master", None)
 
-    # ── Build ─────────────────────────────────────────────────────────────
-
     def _build(self):
-        # Header bar
+        # Header
         hdr = tk.Frame(self, bg=HDR_BG)
         hdr.pack(fill="x")
+        tk.Label(hdr, text="⚙  System Settings", font=FONT_HEADER,
+                 bg=HDR_BG, fg=HDR_FG, padx=16, pady=10).pack(side="left")
+        tk.Button(hdr, text="✖ Close", font=FONT_BOLD, bg=HDR_BG, fg=HDR_FG,
+                  relief="flat", command=self.hide).pack(side="right", padx=10)
 
-        tk.Label(
-            hdr, text="⚙  Settings",
-            font=FONT_HEADER, bg=HDR_BG, fg=HDR_FG,
-            padx=16, pady=10
-        ).pack(side="left")
+        container = tk.Canvas(self, bg=THEME_BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=container.yview)
+        scrollable_frame = tk.Frame(container, bg=THEME_BG)
 
-        tk.Button(
-            hdr, text="✖  Close Settings",
-            font=FONT_BOLD, bg=HDR_BG, fg=HDR_FG,
-            activebackground="#b58955",
-            relief="flat", bd=0, cursor="hand2",
-            padx=14, pady=10,
-            command=self.hide,
-        ).pack(side="right", padx=10)
+        scrollable_frame.bind("<Configure>",
+                              lambda e: container.configure(scrollregion=container.bbox("all")))
+        container.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        container.configure(yscrollcommand=scrollbar.set)
 
-        # Main content
-        content = tk.Frame(self, bg=THEME_BG)
-        content.pack(fill="both", expand=True, padx=14, pady=10)
-        self._build_ai_section(content)
+        container.pack(side="left", fill="both", expand=True, padx=14)
+        scrollbar.pack(side="right", fill="y")
 
-        # Footer buttons
+        # 2-Column Grid (was 3 — Confluence column removed)
+        main_grid = tk.Frame(scrollable_frame, bg=THEME_BG)
+        main_grid.pack(fill="x", pady=20, anchor="nw")
+
+        # --- COL 0: GROQ ---
+        groq_card = self._build_card(main_grid, "1. Groq API Config")
+        groq_card.grid(row=0, column=0, sticky="nw", padx=10)
+        self._add_groq_fields(groq_card)
+
+        # --- COL 1: CONFLUENCE — commented out; uncomment to re-enable ---
+        # conf_card = self._build_card(main_grid, "2. Confluence API (Read-Only)")
+        # conf_card.grid(row=0, column=1, sticky="nw", padx=10)
+        # self._add_conf_fields(conf_card)
+
+        # --- COL 1 (was COL 2): TRANSACTIONS ---
+        txn_card = self._build_card(main_grid, "2. Sample Transaction IDs")
+        txn_card.grid(row=0, column=1, sticky="nw", padx=10)
+        self._add_txn_fields(txn_card)
+
+        # Footer
         footer = tk.Frame(self, bg=THEME_BG)
-        footer.pack(fill="x", padx=14, pady=(0, 20))
+        footer.pack(fill="x", padx=14, pady=30)
+        tk.Button(footer, text="💾 Save All Settings", font=FONT_BOLD,
+                  bg=THEME_ACCENT, fg=TEXT_COLOR, padx=30, pady=10,
+                  command=self._save_all, relief="flat").pack(side="left")
 
-        tk.Button(
-            footer, text="💾  Save API Settings",
-            font=FONT_BOLD,
-            bg=THEME_ACCENT, fg=TEXT_COLOR,
-            activebackground="#b58955",
-            relief="flat", bd=0, cursor="hand2",
-            padx=20, pady=8,
-            command=self._save_all,
-        ).pack(side="left", padx=(0, 12))
+    def _build_card(self, parent, title):
+        card = tk.Frame(parent, bg=CARD_BG,
+                        highlightbackground=CARD_BORDER, highlightthickness=1)
+        tk.Label(card, text=title, font=FONT_BOLD,
+                 bg=HDR_BG, fg=HDR_FG, pady=8).pack(fill="x")
+        return card
 
-        tk.Button(
-            footer, text="✖  Close",
-            font=FONT_BOLD,
-            bg="#e8d5a3", fg=TEXT_COLOR,
-            activebackground=CARD_BORDER,
-            relief="flat", bd=0, cursor="hand2",
-            padx=14, pady=8,
-            command=self.hide,
+    def _add_groq_fields(self, card):
+        body = tk.Frame(card, bg=CARD_BG, padx=15, pady=15)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(body, text="API Key", font=FONT_BOLD, bg=CARD_BG).pack(anchor="w")
+        tk.Button(body, text="🔗 console.groq.com", fg=LINK_COLOR, font=FONT_SMALL,
+                  bg=CARD_BG, relief="flat",
+                  command=lambda: self._copy_link("https://console.groq.com/keys")).pack(anchor="w")
+
+        entry_f = tk.Frame(body, bg=CARD_BG)
+        entry_f.pack(fill="x", pady=(5, 0))
+        self._api_entry = tk.Entry(entry_f, textvariable=self._api_key_var,
+                                   show="*", bg=THEME_INPUT, width=30)
+        self._api_entry.pack(side="left", fill="x", expand=True)
+        tk.Button(entry_f, text="👁", bg=CARD_BG,
+                  command=self._toggle_api).pack(side="right")
+
+        tk.Label(body, text="Model", font=FONT_BOLD, bg=CARD_BG).pack(anchor="w", pady=(15, 0))
+        ttk.Combobox(body, textvariable=self._model_var,
+                     values=GROQ_MODELS, width=28).pack(fill="x", pady=(5, 0))
+
+        # ── Groq Monitor toggle ───────────────────────────────────────────
+        tk.Frame(body, bg=CARD_BG, height=1, highlightbackground="#d4b483",
+                 highlightthickness=1).pack(fill="x", pady=(18, 10))
+        monitor_row = tk.Frame(body, bg=CARD_BG)
+        monitor_row.pack(fill="x")
+        tk.Checkbutton(
+            monitor_row,
+            text="Show Groq Monitor panel in JSON Tool",
+            variable=self._monitor_var,
+            bg=CARD_BG, fg=TEXT_COLOR,
+            activebackground=CARD_BG,
+            font=FONT_BODY,
+            cursor="hand2",
         ).pack(side="left")
-
-    # ── Groq AI section ───────────────────────────────────────────────────
-
-    def _build_ai_section(self, parent):
-        # Card
-        card = tk.Frame(
-            parent, bg=CARD_BG,
-            highlightbackground=CARD_BORDER, highlightthickness=1
-        )
-        card.pack(fill="x", padx=16, pady=16)
-
-        ch = tk.Frame(card, bg=HDR_BG)
-        ch.pack(fill="x")
-        tk.Label(
-            ch, text="Groq API Configuration",
-            font=FONT_BOLD, bg=HDR_BG, fg=HDR_FG,
-            padx=12, pady=7
-        ).pack(side="left")
-
-        body = tk.Frame(card, bg=CARD_BG)
-        body.pack(fill="x", padx=16, pady=12)
-
-        # API Key row
-        tk.Label(
-            body, text="API Key:", font=FONT_BOLD,
-            bg=CARD_BG, fg=TEXT_COLOR, width=12, anchor="w"
-        ).grid(row=0, column=0, sticky="w", pady=8)
-
-        self._api_entry = tk.Entry(
-            body, textvariable=self._api_key_var,
-            font=("Consolas", 10), width=52,
-            bg=THEME_INPUT, fg=TEXT_COLOR,
-            relief="flat",
-            highlightbackground=THEME_BORDER,
-            highlightcolor=THEME_ACCENT,
-            highlightthickness=1, bd=0,
-            insertbackground=TEXT_COLOR,
-            show="*",
-        )
-        self._api_entry.grid(row=0, column=1, sticky="w", pady=8)
-
-        tk.Button(
-            body, text="👁  Show / Hide",
-            font=FONT_SMALL, bg=CARD_BG, fg=TEXT_COLOR,
-            relief="flat", bd=0, cursor="hand2",
-            command=self._toggle_key,
-        ).grid(row=0, column=2, padx=(10, 0), sticky="w")
-
-        # Model row
-        tk.Label(
-            body, text="Model:", font=FONT_BOLD,
-            bg=CARD_BG, fg=TEXT_COLOR, width=12, anchor="w"
-        ).grid(row=1, column=0, sticky="w", pady=8)
-
-        ttk.Combobox(
-            body, textvariable=self._model_var,
-            values=GROQ_MODELS, state="readonly", width=40, font=FONT_BODY,
-        ).grid(row=1, column=1, sticky="w", pady=8)
-
-        # Help link
         tk.Label(
             body,
-            text="Get a free API key at  console.groq.com  — no credit card needed.",
-            font=FONT_SMALL, bg=CARD_BG, fg="#7a5c2e",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
+            text="Hides the Groq request/response monitor column.\nTakes effect after closing and reopening the Application.",
+            font=("Segoe UI", 8), bg=CARD_BG, fg="#a08060",
+            justify="left",
+        ).pack(anchor="w", pady=(3, 0))
 
-        # Info box — updated to mention SQLite, not JSON
-        info = tk.Frame(
-            parent, bg=INFO_BG,
-            highlightbackground=INFO_BORDER, highlightthickness=1
-        )
-        info.pack(fill="x", padx=16)
+    # ── Confluence card — commented out; uncomment to re-enable ──────────
+    # def _add_conf_fields(self, card):
+    #     body = tk.Frame(card, bg=CARD_BG, padx=15, pady=15)
+    #     body.pack(fill="both", expand=True)
+    #
+    #     instr_f = tk.Frame(body, bg="#fff9e6",
+    #                        highlightthickness=1, highlightbackground="#ffe58f")
+    #     instr_f.pack(fill="x", pady=(0, 15))
+    #
+    #     tk.Button(instr_f, text="🔗 Create Scoped Token Here", fg=LINK_COLOR,
+    #               font=FONT_BOLD, bg="#fff9e6", relief="flat",
+    #               command=lambda: self._copy_link(
+    #                   "https://id.atlassian.com/manage-profile/security/api-tokens")
+    #               ).pack(anchor="w", padx=5)
+    #
+    #     guide_text = (
+    #         "1. Label: Groq-Reader-Only\n"
+    #         "2. Scopes (Confluence section):\n"
+    #         "   • read:page:confluence\n"
+    #         "   • read:space-details:confluence\n"
+    #         "   • read:content-details:confluence\n"
+    #         "3. Leave 'Write/Delete' UNCHECKED."
+    #     )
+    #     tk.Label(instr_f, text=guide_text, font=FONT_SMALL, bg="#fff9e6",
+    #              justify="left", fg="#444").pack(anchor="w", padx=10, pady=5)
+    #
+    #     tk.Label(body, text="Email Address", font=FONT_BOLD, bg=CARD_BG).pack(anchor="w")
+    #     tk.Entry(body, textvariable=self._conf_user_var,
+    #              bg=THEME_INPUT, width=35).pack(fill="x", pady=(5, 10))
+    #
+    #     tk.Label(body, text="API Token", font=FONT_BOLD, bg=CARD_BG).pack(anchor="w")
+    #     tok_f = tk.Frame(body, bg=CARD_BG)
+    #     tok_f.pack(fill="x", pady=(5, 10))
+    #     self._token_entry = tk.Entry(tok_f, textvariable=self._conf_token_var,
+    #                                  show="*", bg=THEME_INPUT, width=30)
+    #     self._token_entry.pack(side="left", fill="x", expand=True)
+    #     tk.Button(tok_f, text="👁", bg=CARD_BG,
+    #               command=self._toggle_token).pack(side="right")
+    #
+    #     tk.Label(body, text="Base URL", font=FONT_BOLD, bg=CARD_BG).pack(anchor="w")
+    #     tk.Entry(body, textvariable=self._conf_url_var,
+    #              bg=THEME_INPUT, width=35).pack(fill="x", pady=(5, 0))
 
-        tk.Label(
-            info,
-            text=(
-                f"ℹ  Your API key is stored securely in the local database:\n"
-                f"   {DB_PATH}\n"
-                f"   It is only sent to api.groq.com to power the Autofill with AI feature."
-            ),
-            font=FONT_SMALL, bg=INFO_BG, fg=TEXT_COLOR,
-            justify="left", anchor="w", padx=12,
-        ).pack(fill="x", pady=8)
+    def _add_txn_fields(self, card):
+        body = tk.Frame(card, bg=CARD_BG, padx=15, pady=15)
+        body.pack(fill="both", expand=True)
 
-    # ── Helpers ───────────────────────────────────────────────────────────
+        rows = [
+            ("Beyonic ID",  "BeyonicTxnId"),
+            ("Network ID",  "NetworkTxnId"),
+            ("Airtel ID",   "AirtelTxnId"),
+            ("Bank Ref",    "BankTxnId"),
+            ("Flexipay",    "FlexipayTxnId"),
+        ]
+        for lbl, key in rows:
+            tk.Label(body, text=lbl, font=FONT_BOLD, bg=CARD_BG).pack(anchor="w", pady=(5, 0))
+            tk.Entry(body, textvariable=self._txn_vars[key],
+                     bg=THEME_INPUT, width=35).pack(fill="x", pady=(2, 5))
 
-    def _toggle_key(self):
-        self._key_visible = not self._key_visible
-        self._api_entry.config(show="" if self._key_visible else "*")
+    def _toggle_api(self):
+        self._key_vis = not self._key_vis
+        self._api_entry.config(show="" if self._key_vis else "*")
+
+    # Confluence token toggle — commented out; uncomment to re-enable
+    # def _toggle_token(self):
+    #     self._tok_vis = not self._tok_vis
+    #     self._token_entry.config(show="" if self._tok_vis else "*")
 
     def _save_all(self):
-        self._cfg["api_key"]    = self._api_key_var.get().strip()
-        self._cfg["groq_model"] = self._model_var.get()
-        self._cfg["parse_mode"] = "ai"
+        self._cfg.update({
+            "api_key":            self._api_key_var.get().strip(),
+            "groq_model":         self._model_var.get(),
+            "show_groq_monitor":  "1" if self._monitor_var.get() else "0",
+
+            # Confluence fields — commented out; uncomment to re-enable
+            # "conf_username":  self._conf_user_var.get().strip(),
+            # "conf_api_token": self._conf_token_var.get().strip(),
+            # "conf_base_url":  self._conf_url_var.get().strip(),
+        })
+        for k, v in self._txn_vars.items():
+            self._cfg[k] = v.get().strip()
         try:
             save_settings(self._cfg)
-            messagebox.showinfo(
-                "Saved",
-                "API settings saved successfully to the local database.",
-                parent=self,
-            )
-        except IOError as exc:
-            messagebox.showerror("Save Failed", str(exc), parent=self)
+            messagebox.showinfo("Success", "Settings saved. App is now in Read-Only mode.")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))

@@ -28,7 +28,7 @@ class ReconcilePanel(tk.Frame):
         ctrl_bar.pack(fill="x", padx=10, pady=5)
 
         # M-Pesa Setup
-        self.mpesa_box = tk.LabelFrame(ctrl_bar, text=" M-Pesa Setup ", bg="#FAF3E6", 
+        self.mpesa_box = tk.LabelFrame(ctrl_bar, text=" M-Pesa,Airtel,Beyonic etc Setup ", bg="#FAF3E6", 
                                        fg="#2e7d32", font=("Segoe UI", 9, "bold"), 
                                        highlightbackground="#2e7d32", highlightthickness=1)
         self.mpesa_box.pack(side="left", fill="both", expand=True, padx=5)

@@ -8,14 +8,12 @@
 #  Save      : Ctrl+S inside the editor saves the note immediately
 #  Typing   : Text widget is fully editable (no state="disabled" anywhere)
 # ════════════════════════════════════════════════════════════════════════
-
 import os
 import sqlite3
 import uuid
 import tkinter as tk
 from tkinter import font as tkfont
 from datetime import datetime
-
 # ── config fallback ──────────────────────────────────────────────────────
 try:
     from config import (
@@ -31,7 +29,6 @@ except ImportError:
     FONT_HEADER = ("Georgia",  15, "bold")
     FONT_BODY   = ("Segoe UI", 11)
     FONT_SMALL  = ("Segoe UI",  9)
-
 # ════════════════════════════════════════════════════════════════════════
 #  DATABASE PATH
 #  Stored in %APPDATA%\4GCapital\  so it survives Desktop clean-ups and
@@ -42,9 +39,7 @@ def _db_path() -> str:
     folder = os.path.join(base, "4GCapital")
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "journal.db")
-
 DB_PATH = _db_path()
-
 # ════════════════════════════════════════════════════════════════════════
 #  PALETTE  – warm savannah, all 6-digit hex
 # ════════════════════════════════════════════════════════════════════════
@@ -79,7 +74,6 @@ C = {
     "sb_trough":    "#e0ccaa",
     "sb_thumb":     "#b5763a",
 }
-
 F_HDR  = ("Georgia",           15, "bold")
 F_H2   = ("Georgia",           12, "bold")
 F_H3   = ("Georgia",           11, "bold")
@@ -90,22 +84,17 @@ F_SBB  = ("Segoe UI",          10, "bold")
 F_SM   = ("Segoe UI",           9)
 F_BTN  = ("Segoe UI",          10)
 F_CARD = ("Palatino Linotype", 10)
-
 COLS = 4   # number of grid columns
-
-
 # ════════════════════════════════════════════════════════════════════════
 #  DATABASE LAYER
 # ════════════════════════════════════════════════════════════════════════
-
 def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-
 def db_init():
-    """Create table if it doesn't exist yet."""
+    """Create table if it doesn't exist yet.  Never drops or truncates."""
     with _get_conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS notes (
@@ -117,7 +106,6 @@ def db_init():
         """)
         conn.commit()
 
-
 def db_load_all() -> list:
     """Return all notes as dicts, newest first."""
     with _get_conn() as conn:
@@ -126,9 +114,8 @@ def db_load_all() -> list:
         ).fetchall()
     return [dict(r) for r in rows]
 
-
 def db_upsert(note: dict):
-    """Insert or replace a single note."""
+    """Insert or replace a single note.  Safe to call any time."""
     with _get_conn() as conn:
         conn.execute("""
             INSERT INTO notes (id, created, body, starred)
@@ -144,37 +131,21 @@ def db_upsert(note: dict):
         })
         conn.commit()
 
-
 def db_delete(note_id: str):
     """Delete a note by id."""
     with _get_conn() as conn:
         conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
         conn.commit()
 
-
-def db_save_all(notes: list):
-    """Replace entire table with current in-memory list (used by autosave on close)."""
-    with _get_conn() as conn:
-        conn.execute("DELETE FROM notes")
-        conn.executemany("""
-            INSERT INTO notes (id, created, body, starred)
-            VALUES (:id, :created, :body, :starred)
-        """, [
-            {
-                "id":      n["id"],
-                "created": n["created"],
-                "body":    n["body"],
-                "starred": 1 if n["starred"] else 0,
-            }
-            for n in notes
-        ])
-        conn.commit()
-
+# NOTE: db_save_all() has been intentionally removed.
+# Every mutation (save, star, delete) now calls db_upsert / db_delete
+# immediately, so there is no need for a bulk-replace on close — which
+# was the operation that could wipe the database if the app crashed or
+# was killed before autosave completed.
 
 # ════════════════════════════════════════════════════════════════════════
 #  HELPERS
 # ════════════════════════════════════════════════════════════════════════
-
 def _new_note(body: str = "") -> dict:
     return {
         "id":      str(uuid.uuid4()),
@@ -183,20 +154,17 @@ def _new_note(body: str = "") -> dict:
         "starred": False,
     }
 
-
 def _fmt_date(iso: str) -> str:
     try:
         return datetime.fromisoformat(iso).strftime("%d %b %Y  ·  %I:%M %p")
     except Exception:
         return iso
 
-
 def _four_words(body: str) -> str:
     words = body.strip().split()
     if not words:
         return "(empty)"
     return " ".join(words[:4]) + ("…" if len(words) > 4 else "")
-
 
 def _flat_btn(parent, text, cmd,
               bg=None, fg=None, hover_bg=None,
@@ -215,7 +183,6 @@ def _flat_btn(parent, text, cmd,
     )
     return b
 
-
 def _scrollbar(parent, cmd):
     return tk.Scrollbar(
         parent, orient="vertical", command=cmd,
@@ -224,23 +191,19 @@ def _scrollbar(parent, cmd):
         relief="groove", bd=1, width=14
     )
 
-
 # ════════════════════════════════════════════════════════════════════════
 #  NOTE CARD
 # ════════════════════════════════════════════════════════════════════════
-
 class NoteCard(tk.Frame):
     """
     Single diary card.  Delete uses an inline banner – NO messagebox.
     Starred cards get a warm gold tint.
     """
-
     def __init__(self, parent, note: dict, serial: int,
                  on_open, on_star, on_delete, on_copy, **kw):
         is_starred = bool(note.get("starred"))
         card_bg  = C["card_star_bg"]  if is_starred else C["card_bg"]
         card_bdr = C["card_star_bdr"] if is_starred else C["card_border"]
-
         super().__init__(
             parent,
             bg=card_bg,
@@ -257,23 +220,18 @@ class NoteCard(tk.Frame):
         self._on_copy  = on_copy
         self._card_bg  = card_bg
         self._confirm_visible = False
-
         self._build()
         self._bind_all()
 
     # ── build ─────────────────────────────────────────────────────────────
-
     def _build(self):
         bg = self._card_bg
         n  = self._note
-
         # Top row
         top = tk.Frame(self, bg=bg)
         top.pack(fill="x", padx=8, pady=(7, 3))
-
         tk.Label(top, text=f"#{self._serial}",
                  font=F_SBB, bg=bg, fg=C["accent"]).pack(side="left")
-
         self._star_lbl = tk.Label(
             top,
             text="★" if n["starred"] else "☆",
@@ -284,15 +242,12 @@ class NoteCard(tk.Frame):
         )
         self._star_lbl.pack(side="right")
         self._star_lbl.bind("<Button-1>", self._star_clicked)
-
         # Date
         tk.Label(self, text=_fmt_date(n["created"]),
                  font=F_DATE, bg=bg, fg=C["muted"]
                  ).pack(fill="x", padx=8)
-
         # Divider
         tk.Frame(self, bg=C["rule"], height=1).pack(fill="x", padx=6, pady=2)
-
         # Body preview – 4 lines max
         lines   = n["body"].strip().split("\n")
         preview = "\n".join(lines[:4]) + ("\n…" if len(lines) > 4 else "")
@@ -302,7 +257,6 @@ class NoteCard(tk.Frame):
             anchor="nw", justify="left", wraplength=170
         )
         self._body_lbl.pack(fill="both", expand=True, padx=8, pady=4)
-
         # Inline delete confirm (hidden until needed)
         self._confirm_frame = tk.Frame(
             self, bg=C["confirm_bg"],
@@ -327,7 +281,6 @@ class NoteCard(tk.Frame):
             bg=C["status_bg"], fg=C["muted"], hover_bg=C["rule"],
             padx=7, pady=2, font=F_SM
         ).pack(side="right", pady=3)
-
         # Footer
         foot = tk.Frame(self, bg=C["tag_bg"])
         foot.pack(fill="x")
@@ -348,7 +301,6 @@ class NoteCard(tk.Frame):
         self._star_lbl.bind("<Button-1>", self._star_clicked)
 
     # ── interactions ──────────────────────────────────────────────────────
-
     def _hover(self, on):
         if self._confirm_visible:
             return
@@ -392,13 +344,10 @@ class NoteCard(tk.Frame):
         self._confirm_visible = False
         self._on_delete(self._note)
 
-
 # ════════════════════════════════════════════════════════════════════════
 #  EDITOR PANE  (embedded, no popup)
 # ════════════════════════════════════════════════════════════════════════
-
 class _EditorPane(tk.Frame):
-
     def __init__(self, parent, note: dict, on_save, on_close):
         super().__init__(parent, bg=C["bg"])
         self._note    = dict(note)
@@ -413,23 +362,17 @@ class _EditorPane(tk.Frame):
         # Toolbar
         tb = tk.Frame(self, bg=C["status_bg"])
         tb.pack(fill="x")
-
         tk.Label(tb, text=_fmt_date(self._note["created"]),
                  font=F_DATE, bg=C["status_bg"], fg=C["muted"],
                  padx=12, pady=7).pack(side="left")
-
         _flat_btn(tb, "B  Bold", self._toggle_bold,
                   bg=C["status_bg"], fg=C["accent2"],
                   hover_bg=C["accent_lt"], padx=10, pady=7).pack(side="left")
-
         tk.Frame(tb, bg=C["rule"], width=1).pack(side="left", fill="y", pady=4)
-
         _flat_btn(tb, "⎘  Copy", self._copy_text,
                   bg=C["status_bg"], fg=C["accent2"],
                   hover_bg=C["accent_lt"], padx=10, pady=7).pack(side="left")
-
         tk.Frame(tb, bg=C["rule"], width=1).pack(side="left", fill="y", pady=4)
-
         self._star_var = tk.BooleanVar(value=bool(self._note.get("starred")))
         self._star_cb  = tk.Checkbutton(
             tb,
@@ -441,32 +384,24 @@ class _EditorPane(tk.Frame):
             command=self._refresh_star
         )
         self._star_cb.pack(side="left", padx=6)
-
         # Close on right
         _flat_btn(tb, "✕  Close", self._on_close,
                   bg=C["status_bg"], fg=C["muted"],
                   hover_bg=C["rule"], padx=10, pady=7).pack(side="right", padx=8)
-
         tk.Label(tb, text="Ctrl+B = Bold  |  Ctrl+S = Save",
                  font=F_SM, bg=C["status_bg"], fg=C["muted"]
                  ).pack(side="right", padx=4)
-
         tk.Frame(self, bg=C["rule"], height=1).pack(fill="x")
-
         # Paper with red margin line
         paper = tk.Frame(self, bg=C["editor_bg"],
                          highlightbackground=C["rule"],
                          highlightthickness=1)
         paper.pack(fill="both", expand=True, padx=14, pady=10)
-
         tk.Frame(paper, bg="#c87060", width=2).pack(side="left", fill="y")
-
         ef = tk.Frame(paper, bg=C["editor_bg"])
         ef.pack(side="left", fill="both", expand=True)
-
         vs = _scrollbar(ef, None)
         vs.pack(side="right", fill="y")
-
         self.text_area = tk.Text(
             ef,
             font=self._plain,
@@ -481,7 +416,6 @@ class _EditorPane(tk.Frame):
         )
         self.text_area.pack(fill="both", expand=True)
         vs.config(command=self.text_area.yview)
-
         self.text_area.tag_config("bold", font=self._bold)
         self.text_area.insert("1.0", self._note.get("body", ""))
         self.text_area.focus_set()
@@ -489,11 +423,9 @@ class _EditorPane(tk.Frame):
         self.text_area.see(tk.INSERT)
         self.text_area.bind("<Control-b>", lambda e: self._toggle_bold())
         self.text_area.bind("<Control-s>", lambda e: self._do_save())
-
         # Bottom buttons
         btm = tk.Frame(self, bg=C["bg"])
         btm.pack(fill="x", padx=14, pady=(0, 12))
-
         _flat_btn(btm, "💾  Save Entry", self._do_save,
                   bg=C["accent"], hover_bg=C["accent2"]
                   ).pack(side="right", padx=(6, 0))
@@ -539,46 +471,47 @@ class _EditorPane(tk.Frame):
         self._note["starred"] = bool(self._star_var.get())
         self._on_save(self._note)
 
-
 # ════════════════════════════════════════════════════════════════════════
 #  MAIN PANEL
 # ════════════════════════════════════════════════════════════════════════
-
 class NotesPanel(tk.Frame):
     """
     Public API for main.py:
         show()      – called when the panel becomes visible
-        autosave()  – called by main.py's WM_DELETE_WINDOW handler
+        autosave()  – no-op kept for API compatibility; all writes are
+                      immediate so there is nothing to flush on close.
     """
-
     def __init__(self, parent: tk.Misc, **kwargs):
         super().__init__(parent, bg=C["bg"], **kwargs)
-
-        db_init()                        # ensure table exists
-
+        db_init()                        # ensure table exists (never drops data)
         self._notes: list      = []
         self._filter           = "all"   # all | starred | unstarred
         self._search_var       = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._refresh_grid())
         self._active_editor    = None
-
         self._build_skeleton()
 
     # ── public API ────────────────────────────────────────────────────────
-
     def show(self):
         self._load()
 
     def autosave(self):
-        """Called by main.py before the window closes."""
-        try:
-            db_save_all(self._notes)
-        except Exception:
-            pass
+        """
+        Called by main.py's WM_DELETE_WINDOW handler.
+        All mutations already write to SQLite immediately (db_upsert /
+        db_delete), so nothing extra needs to happen here.  Kept so
+        callers don't need to change.
+        """
+        pass   # intentional no-op — writes are already live
 
-    # ── load / save ───────────────────────────────────────────────────────
-
+    # ── load ──────────────────────────────────────────────────────────────
     def _load(self):
+        """
+        Load notes from SQLite.  A welcome note is inserted ONLY when
+        the database has genuinely never had any entries — i.e. the
+        notes table is empty — not merely when a session has no notes
+        in memory.
+        """
         try:
             rows = db_load_all()
             # Normalise the 'starred' field (SQLite stores 0/1 integers)
@@ -589,23 +522,36 @@ class NotesPanel(tk.Frame):
         except Exception as exc:
             self._notes = []
             self._set_status(f"Load error: {exc}")
+            self._refresh_all()
+            return   # don't insert welcome note on a load error
 
-        if not self._notes:
+        # Insert the welcome note only when the database is completely empty.
+        # Using a DB count query rather than checking in-memory length
+        # avoids false positives if _load() is ever called more than once.
+        if not self._notes and self._db_is_empty():
             welcome = _new_note(
                 "Welcome to your Daily Work Journal!\n\n"
                 "Right-click any card to edit, copy, or delete.\n"
                 "Click ☆ to star important entries.\n"
                 "Ctrl+B in the editor for bold text."
             )
-            db_upsert(welcome)
+            db_upsert(welcome)       # persist immediately
             self._notes = [welcome]
 
         self._refresh_all()
 
-
+    def _db_is_empty(self) -> bool:
+        """Return True only when the notes table has zero rows."""
+        try:
+            with _get_conn() as conn:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM notes"
+                ).fetchone()[0]
+            return count == 0
+        except Exception:
+            return False   # if we can't tell, assume not empty (safe default)
 
     # ── status ────────────────────────────────────────────────────────────
-
     def _set_status(self, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
         try:
@@ -614,7 +560,6 @@ class NotesPanel(tk.Frame):
             pass
 
     # ── filter helper ─────────────────────────────────────────────────────
-
     def _visible_notes(self) -> list:
         q = self._search_var.get().strip().lower()
         out = []
@@ -626,20 +571,16 @@ class NotesPanel(tk.Frame):
         return out
 
     # ── refresh ───────────────────────────────────────────────────────────
-
     def _refresh_all(self):
         self._refresh_grid()
 
     def _refresh_grid(self):
         if self._active_editor is not None:
             return
-
         for w in self._content_pane.winfo_children():
             w.destroy()
-
         visible = self._visible_notes()
         total   = len(self._notes)
-
         if not visible:
             tk.Label(
                 self._content_pane,
@@ -647,23 +588,18 @@ class NotesPanel(tk.Frame):
                 font=F_H2, bg=C["bg"], fg=C["muted"]
             ).pack(pady=80)
             return
-
         # ── scrollable wrapper ────────────────────────────────────────────
         gc  = tk.Canvas(self._content_pane, bg=C["bg"], highlightthickness=0)
         gvs = _scrollbar(self._content_pane, gc.yview)
         gc.configure(yscrollcommand=gvs.set)
         gvs.pack(side="right", fill="y")
         gc.pack(side="left", fill="both", expand=True, padx=(10, 0), pady=6)
-
         inner = tk.Frame(gc, bg=C["bg"])
         win   = gc.create_window((0, 0), window=inner, anchor="nw")
-
         # ── separate starred / unstarred ──────────────────────────────────
         starred   = [n for n in visible if     n["starred"]]
         unstarred = [n for n in visible if not n["starred"]]
-
         current_row = 0
-
         # ── STARRED STRIP (full-width label + 4-col row) ──────────────────
         if starred:
             # Section header
@@ -680,7 +616,6 @@ class NotesPanel(tk.Frame):
                 padx=10, pady=5
             ).pack(side="left")
             current_row += 1
-
             # Starred cards fill row left→right
             for i, note in enumerate(starred):
                 col    = i % COLS
@@ -693,9 +628,7 @@ class NotesPanel(tk.Frame):
                     on_delete = self._delete_note,
                     on_copy   = self._copy_note,
                 ).grid(row=gr, column=col, padx=6, pady=6, sticky="nsew")
-
             current_row += (len(starred) + COLS - 1) // COLS  # rows used
-
             # Spacer between sections
             tk.Frame(inner, bg=C["rule"], height=2).grid(
                 row=current_row, column=0,
@@ -703,7 +636,6 @@ class NotesPanel(tk.Frame):
                 padx=6, pady=4
             )
             current_row += 1
-
         # ── ALL OTHER NOTES ───────────────────────────────────────────────
         if unstarred:
             if starred:   # only show header if both sections exist
@@ -718,7 +650,6 @@ class NotesPanel(tk.Frame):
                     padx=10, pady=4
                 ).pack(side="left")
                 current_row += 1
-
             for i, note in enumerate(unstarred):
                 col    = i % COLS
                 gr     = current_row + (i // COLS)
@@ -730,11 +661,9 @@ class NotesPanel(tk.Frame):
                     on_delete = self._delete_note,
                     on_copy   = self._copy_note,
                 ).grid(row=gr, column=col, padx=6, pady=6, sticky="nsew")
-
         # Configure all 4 columns to expand equally
         for c in range(COLS):
             inner.columnconfigure(c, weight=1, uniform="col")
-
         # Scrolling wiring
         inner.bind("<Configure>",
                    lambda e: gc.configure(scrollregion=gc.bbox("all")))
@@ -744,7 +673,6 @@ class NotesPanel(tk.Frame):
                 lambda e: gc.yview_scroll(-1 * int(e.delta / 120), "units"))
 
     # ── editor ────────────────────────────────────────────────────────────
-
     def _show_editor(self, note: dict):
         for w in self._content_pane.winfo_children():
             w.destroy()
@@ -766,17 +694,14 @@ class NotesPanel(tk.Frame):
             self._notes[idx] = updated
         else:
             self._notes.insert(0, updated)
-
         # Always keep newest first
         self._notes.sort(key=lambda n: n["created"], reverse=True)
-
-        # Persist immediately to SQLite
+        # Persist immediately to SQLite — single upsert, never a full wipe
         try:
             db_upsert(updated)
             self._set_status("Note saved  ✓")
         except Exception as exc:
             self._set_status(f"Save error: {exc}")
-
         self._active_editor = None
         self._refresh_all()
 
@@ -785,7 +710,6 @@ class NotesPanel(tk.Frame):
         self._refresh_all()
 
     # ── CRUD ──────────────────────────────────────────────────────────────
-
     def _new_note(self):
         self._show_editor(_new_note())
 
@@ -809,7 +733,7 @@ class NotesPanel(tk.Frame):
             if n["id"] == note["id"]:
                 n["starred"] = not n["starred"]
                 try:
-                    db_upsert(n)
+                    db_upsert(n)   # immediate write — no bulk-save needed
                 except Exception:
                     pass
                 break
@@ -830,17 +754,13 @@ class NotesPanel(tk.Frame):
         self._refresh_grid()
 
     # ── skeleton ──────────────────────────────────────────────────────────
-
     def _build_skeleton(self):
-
         # HEADER
         hdr = tk.Frame(self, bg=C["status_bg"])
         hdr.pack(fill="x")
-
         # Container for title + subtitle (stacked vertically)
         title_container = tk.Frame(hdr, bg=C["status_bg"])
         title_container.pack(side="left", padx=20, pady=12)
-
         # Main Title
         tk.Label(
             title_container,
@@ -849,27 +769,22 @@ class NotesPanel(tk.Frame):
             bg=C["status_bg"],
             fg=C["header_fg"]
         ).pack(anchor="w")
-
-        # Subtitle (styled: smaller, softer color)
+        # Subtitle
         tk.Label(
             title_container,
             text="Your space to think, track, save notes and capture progress",
-            font=("Segoe UI", 10, "italic"),  # adjust to your theme
+            font=("Segoe UI", 10, "italic"),
             bg=C["status_bg"],
-            fg="#8A7F73"  # softer tone for subtitle
+            fg="#8A7F73"
         ).pack(anchor="w", pady=(2, 0))
-
         _flat_btn(hdr, "✚  New Entry", self._new_note,
                   bg=C["green"], hover_bg=C["green_hov"],
                   padx=14, pady=7
                   ).pack(side="right", padx=(0, 4), pady=10)
-
         tk.Frame(self, bg=C["rule"], height=1).pack(fill="x")
-
         # FILTER TABS + SEARCH
         top_bar = tk.Frame(self, bg=C["status_bg"])
         top_bar.pack(fill="x")
-
         self._tab_btns: dict = {}
         for lbl, key in [
             ("📋  All",      "all"),
@@ -884,7 +799,6 @@ class NotesPanel(tk.Frame):
             )
             btn.pack(side="left")
             self._tab_btns[key] = btn
-
         # Search (right-aligned in tab bar)
         sw = tk.Frame(top_bar, bg=C["status_bg"])
         sw.pack(side="right", padx=14, pady=4)
@@ -898,26 +812,21 @@ class NotesPanel(tk.Frame):
         _flat_btn(sw, "✕", lambda: self._search_var.set(""),
                   bg=C["status_bg"], fg=C["muted"], hover_bg=C["rule"],
                   padx=5, pady=2, font=F_SM).pack(side="left", padx=3)
-
         tk.Frame(self, bg=C["rule"], height=1).pack(fill="x")
-
         # CONTENT PANE
         self._content_pane = tk.Frame(self, bg=C["bg"])
         self._content_pane.pack(fill="both", expand=True)
-
         # STATUS FOOTER
         foot = tk.Frame(self, bg=C["status_bg"])
         foot.pack(fill="x", side="bottom")
         tk.Frame(foot, bg=C["rule"], height=1).pack(fill="x")
         inner = tk.Frame(foot, bg=C["status_bg"])
         inner.pack(fill="x", padx=14, pady=5)
-
         self._status_lbl = tk.Label(
             inner, text="Ready",
             font=F_SM, bg=C["status_bg"], fg=C["muted"]
         )
         self._status_lbl.pack(side="left")
-
         tk.Label(
             inner,
             text=f"DB: {DB_PATH}  ·  Ctrl+S = Save  ·  Right-click card → Edit / Copy / Delete",

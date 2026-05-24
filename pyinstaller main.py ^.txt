@@ -6,7 +6,20 @@ pyinstaller main.py ^
     --add-data "app.ico;." ^
     --add-data "LICENSE.txt;." ^
     --clean
+updated
 
+python -m PyInstaller main.py ^
+    --name "4G_WORKBENCH" ^
+    --onefile ^
+    --windowed ^
+    --icon=app.ico ^
+    --add-data "app.ico;." ^
+    --add-data "LICENSE.txt;." ^
+    --hidden-import=openpyxl ^
+    --hidden-import=openpyxl.styles ^
+    --clean
+
+on inno setup always remember to update OutputBaseFilename=4G_WORKBENCH_v1.0.6
 on mac
 
 pyinstaller main.py \
@@ -25,3 +38,13 @@ create-dmg \
   --app-drop-link 600 185 \
   "4G_WORKBENCH.dmg" \
   "dist/"
+
+# https://gist.github.com/Natho99/90350443fc859745e22b89462be5ed9e
+
+Inno setup
+#define MyAppName "4G WORKBENCH"
+#define MyAppVersion "1.0.4"
+#define MyAppPublisher "4G Capital"
+#define MyAppURL "https://www.4g-capital.com/"
+#define MyAppExeName "4G_WORKBENCH.exe"
+
